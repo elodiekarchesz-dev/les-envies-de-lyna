@@ -14,11 +14,21 @@ const ordreCategories = [
   'Jeux de société',
 ]
 
+const colonnesPubliques = [
+  'id',
+  'nom',
+  'categorie',
+  'image',
+  'lien',
+  'prix',
+  'ordre',
+  'coup_de_coeur',
+  'reserve',
+].join(',')
+
 const formaterPrix = (prix) => {
   if (prix === null || prix === undefined || prix === '') return ''
-
   const montant = Number(String(prix).replace(',', '.'))
-
   if (Number.isNaN(montant)) return String(prix)
 
   return new Intl.NumberFormat('fr-FR', {
@@ -28,6 +38,22 @@ const formaterPrix = (prix) => {
 }
 
 function App() {
+  const [pageAdmin, setPageAdmin] = useState(
+    window.location.hash === '#admin'
+  )
+
+  useEffect(() => {
+    const actualiserPage = () =>
+      setPageAdmin(window.location.hash === '#admin')
+
+    window.addEventListener('hashchange', actualiserPage)
+    return () => window.removeEventListener('hashchange', actualiserPage)
+  }, [])
+
+  return pageAdmin ? <PageAdmin /> : <ListeCadeaux />
+}
+
+function ListeCadeaux() {
   const [cadeaux, setCadeaux] = useState([])
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
@@ -36,14 +62,15 @@ function App() {
   const [envoi, setEnvoi] = useState(false)
   const [recherche, setRecherche] = useState('')
   const [categorieActive, setCategorieActive] = useState('Toutes')
-  const [uniquementCoupsDeCoeur, setUniquementCoupsDeCoeur] = useState(false)
+  const [uniquementCoupsDeCoeur, setUniquementCoupsDeCoeur] =
+    useState(false)
 
   async function charger() {
     setErreur('')
 
     const { data, error } = await supabase
       .from('cadeaux')
-      .select('*')
+      .select(colonnesPubliques)
       .order('ordre', { ascending: true, nullsFirst: false })
       .order('id', { ascending: true })
 
@@ -79,12 +106,21 @@ function App() {
     }
   }, [])
 
+  const statistiques = useMemo(() => {
+    const total = cadeaux.length
+    const reserves = cadeaux.filter((cadeau) => cadeau.reserve).length
+
+    return {
+      total,
+      reserves,
+      disponibles: total - reserves,
+    }
+  }, [cadeaux])
+
   const categoriesDisponibles = useMemo(() => {
     const categories = [
       ...new Set(
-        cadeaux
-          .map((cadeau) => cadeau.categorie || 'Autres idées')
-          .filter(Boolean)
+        cadeaux.map((cadeau) => cadeau.categorie || 'Autres idées')
       ),
     ]
 
@@ -127,11 +163,7 @@ function App() {
 
     for (const cadeau of cadeauxFiltres) {
       const categorie = cadeau.categorie || 'Autres idées'
-
-      if (!map.has(categorie)) {
-        map.set(categorie, [])
-      }
-
+      if (!map.has(categorie)) map.set(categorie, [])
       map.get(categorie).push(cadeau)
     }
 
@@ -160,11 +192,10 @@ function App() {
     })
   }, [cadeauxFiltres])
 
-  async function confirmer(e) {
-    e.preventDefault()
+  async function confirmer(event) {
+    event.preventDefault()
 
     const nom = prenom.trim()
-
     if (!nom || !reservation) return
 
     setEnvoi(true)
@@ -207,61 +238,50 @@ function App() {
       </header>
 
       <main className="container">
-        <section
-          aria-label="Recherche et filtres"
-          style={{ margin: '24px auto 32px', display: 'grid', gap: '14px' }}
-        >
+        {!chargement && cadeaux.length > 0 && (
+          <section className="compteur" aria-label="État des réservations">
+            <div>
+              <strong>{statistiques.total}</strong>
+              <span>cadeaux</span>
+            </div>
+            <div>
+              <strong>{statistiques.reserves}</strong>
+              <span>déjà réservés</span>
+            </div>
+            <div>
+              <strong>{statistiques.disponibles}</strong>
+              <span>encore disponibles</span>
+            </div>
+          </section>
+        )}
+
+        <section className="outils" aria-label="Recherche et filtres">
           <input
+            className="recherche"
             type="search"
             value={recherche}
             onChange={(event) => setRecherche(event.target.value)}
             placeholder="Rechercher un cadeau…"
             aria-label="Rechercher un cadeau par son nom"
-            style={{
-              width: '100%',
-              padding: '14px 18px',
-              border: '1px solid #ddd',
-              borderRadius: '999px',
-              font: 'inherit',
-              fontSize: '16px',
-              background: '#fff',
-              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.08)',
-            }}
           />
 
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '8px',
-              alignItems: 'center',
-            }}
-          >
+          <div className="filtres">
             <button
               type="button"
-              className={
-                uniquementCoupsDeCoeur
-                  ? 'bouton principal'
-                  : 'bouton secondaire'
-              }
+              className={`bouton ${
+                uniquementCoupsDeCoeur ? 'principal' : 'secondaire'
+              }`}
               onClick={() =>
                 setUniquementCoupsDeCoeur((valeur) => !valeur)
               }
             >
-              ⭐ Coups de cœur
+              💜 Coups de cœur
             </button>
 
             <select
               value={categorieActive}
               onChange={(event) => setCategorieActive(event.target.value)}
               aria-label="Filtrer par catégorie"
-              style={{
-                padding: '11px 14px',
-                border: '1px solid #ddd',
-                borderRadius: '999px',
-                font: 'inherit',
-                background: '#fff',
-              }}
             >
               <option value="Toutes">Toutes les catégories</option>
               {categoriesDisponibles.map((categorie) => (
@@ -285,14 +305,18 @@ function App() {
           </div>
 
           {!chargement && cadeauxFiltres.length > 0 && (
-            <p style={{ margin: 0, opacity: 0.75 }}>
+            <p className="resultats">
               {cadeauxFiltres.length}{' '}
-              {cadeauxFiltres.length > 1 ? 'cadeaux affichés' : 'cadeau affiché'}
+              {cadeauxFiltres.length > 1
+                ? 'cadeaux affichés'
+                : 'cadeau affiché'}
             </p>
           )}
         </section>
 
-        {chargement && <p className="message">Chargement de la liste…</p>}
+        {chargement && (
+          <p className="message">Chargement de la liste…</p>
+        )}
 
         {erreur && <p className="message erreur">{erreur}</p>}
 
@@ -303,11 +327,13 @@ function App() {
           </p>
         )}
 
-        {!chargement && cadeaux.length > 0 && cadeauxFiltres.length === 0 && (
-          <p className="message">
-            Aucun cadeau ne correspond à votre recherche.
-          </p>
-        )}
+        {!chargement &&
+          cadeaux.length > 0 &&
+          cadeauxFiltres.length === 0 && (
+            <p className="message">
+              Aucun cadeau ne correspond à votre recherche.
+            </p>
+          )}
 
         {groupes.map(([categorie, items]) => (
           <section key={categorie} className="categorie">
@@ -321,13 +347,19 @@ function App() {
                 >
                   <div className="visuel">
                     {cadeau.image ? (
-                      <img src={cadeau.image} alt={cadeau.nom} loading="lazy" />
+                      <img
+                        src={cadeau.image}
+                        alt={cadeau.nom}
+                        loading="lazy"
+                      />
                     ) : (
                       <div className="sans-image">🎁</div>
                     )}
 
                     {cadeau.coup_de_coeur && (
-                      <span className="coeur">⭐ Coup de cœur</span>
+                      <span className="coeur">
+                        💜 Coup de cœur de Lyna
+                      </span>
                     )}
 
                     {cadeau.reserve && (
@@ -339,7 +371,9 @@ function App() {
                     <h3>{cadeau.nom}</h3>
 
                     {cadeau.prix && (
-                      <p className="prix">{formaterPrix(cadeau.prix)}</p>
+                      <p className="prix">
+                        {formaterPrix(cadeau.prix)}
+                      </p>
                     )}
 
                     <div className="actions">
@@ -371,17 +405,29 @@ function App() {
         ))}
       </main>
 
-      <footer>Liste préparée avec amour pour Lyna 💜</footer>
+      <footer>
+        <p>Liste préparée avec amour pour Lyna 💜</p>
+        <a className="lien-admin" href="#admin">
+          Espace privé
+        </a>
+      </footer>
 
       {reservation && (
-        <div className="fond-modal" onMouseDown={() => setReservation(null)}>
+        <div
+          className="fond-modal"
+          onMouseDown={() => setReservation(null)}
+        >
           <div
             className="modal"
             role="dialog"
             aria-modal="true"
             onMouseDown={(event) => event.stopPropagation()}
           >
-            <button className="fermer" onClick={() => setReservation(null)}>
+            <button
+              className="fermer"
+              onClick={() => setReservation(null)}
+              aria-label="Fermer"
+            >
               ×
             </button>
 
@@ -397,7 +443,6 @@ function App() {
 
             <form onSubmit={confirmer}>
               <label htmlFor="prenom">Votre prénom</label>
-
               <input
                 id="prenom"
                 value={prenom}
@@ -407,14 +452,219 @@ function App() {
                 required
               />
 
-              <button className="bouton principal pleine" disabled={envoi}>
-                {envoi ? 'Réservation…' : 'Confirmer la réservation'}
+              <button
+                className="bouton principal pleine"
+                disabled={envoi}
+              >
+                {envoi
+                  ? 'Réservation…'
+                  : 'Confirmer la réservation'}
               </button>
             </form>
           </div>
         </div>
       )}
     </>
+  )
+}
+
+function PageAdmin() {
+  const [session, setSession] = useState(null)
+  const [email, setEmail] = useState('')
+  const [motDePasse, setMotDePasse] = useState('')
+  const [reservations, setReservations] = useState([])
+  const [chargement, setChargement] = useState(true)
+  const [connexion, setConnexion] = useState(false)
+  const [erreur, setErreur] = useState('')
+
+  async function chargerReservations() {
+    setChargement(true)
+    setErreur('')
+
+    const { data, error } = await supabase.rpc(
+      'admin_liste_reservations'
+    )
+
+    if (error) {
+      setErreur(
+        "Impossible d'afficher les réservations. Vérifiez le SQL Supabase et le compte administrateur."
+      )
+      setReservations([])
+    } else {
+      setReservations(data ?? [])
+    }
+
+    setChargement(false)
+  }
+
+  useEffect(() => {
+    let actif = true
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!actif) return
+      setSession(data.session)
+
+      if (data.session) {
+        chargerReservations()
+      } else {
+        setChargement(false)
+      }
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nouvelleSession) => {
+      setSession(nouvelleSession)
+
+      if (nouvelleSession) {
+        chargerReservations()
+      } else {
+        setReservations([])
+        setChargement(false)
+      }
+    })
+
+    return () => {
+      actif = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  async function seConnecter(event) {
+    event.preventDefault()
+    setConnexion(true)
+    setErreur('')
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: motDePasse,
+    })
+
+    if (error) {
+      setErreur('Adresse e-mail ou mot de passe incorrect.')
+    }
+
+    setConnexion(false)
+  }
+
+  async function seDeconnecter() {
+    await supabase.auth.signOut()
+  }
+
+  const reservationsEffectives = reservations.filter(
+    (cadeau) => cadeau.reserve
+  )
+
+  if (!session) {
+    return (
+      <main className="admin-page">
+        <section className="admin-carte connexion-admin">
+          <a className="retour-site" href="#">
+            ← Retour à la liste
+          </a>
+
+          <div className="admin-icone">🔐</div>
+          <h1>Espace privé</h1>
+          <p>
+            Connectez-vous pour voir qui a réservé les cadeaux.
+          </p>
+
+          {erreur && <p className="message erreur">{erreur}</p>}
+
+          <form onSubmit={seConnecter}>
+            <label htmlFor="email-admin">Adresse e-mail</label>
+            <input
+              id="email-admin"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              autoComplete="email"
+              required
+            />
+
+            <label htmlFor="mot-de-passe-admin">Mot de passe</label>
+            <input
+              id="mot-de-passe-admin"
+              type="password"
+              value={motDePasse}
+              onChange={(event) => setMotDePasse(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+
+            <button
+              className="bouton principal pleine"
+              disabled={connexion}
+            >
+              {connexion ? 'Connexion…' : 'Se connecter'}
+            </button>
+          </form>
+        </section>
+      </main>
+    )
+  }
+
+  return (
+    <main className="admin-page">
+      <section className="admin-carte">
+        <div className="admin-entete">
+          <div>
+            <a className="retour-site" href="#">
+              ← Retour à la liste
+            </a>
+            <h1>Réservations</h1>
+            <p>
+              {reservationsEffectives.length}{' '}
+              {reservationsEffectives.length > 1
+                ? 'cadeaux réservés'
+                : 'cadeau réservé'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            className="bouton secondaire"
+            onClick={seDeconnecter}
+          >
+            Se déconnecter
+          </button>
+        </div>
+
+        {chargement && (
+          <p className="message">Chargement des réservations…</p>
+        )}
+
+        {erreur && <p className="message erreur">{erreur}</p>}
+
+        {!chargement &&
+          !erreur &&
+          reservationsEffectives.length === 0 && (
+            <p className="message">
+              Aucun cadeau n'est encore réservé.
+            </p>
+          )}
+
+        {!chargement && !erreur && reservationsEffectives.length > 0 && (
+          <div className="liste-admin">
+            {reservationsEffectives.map((cadeau) => (
+              <article className="reservation-admin" key={cadeau.id}>
+                <div>
+                  <span className="categorie-admin">
+                    {cadeau.categorie || 'Autres idées'}
+                  </span>
+                  <h2>{cadeau.nom}</h2>
+                </div>
+
+                <p>
+                  Réservé par{' '}
+                  <strong>{cadeau.prenom_reservant || 'Non renseigné'}</strong>
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
   )
 }
 
