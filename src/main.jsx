@@ -255,6 +255,16 @@ function ListeCadeaux() {
           </section>
         )}
 
+        {!chargement && cadeaux.length > 0 && (
+          <p className="resume-compteur">
+            🎁 {statistiques.reserves} cadeau
+            {statistiques.reserves > 1 ? 'x' : ''} réservé
+            {statistiques.reserves > 1 ? 's' : ''} sur {statistiques.total}
+            {' '}— {statistiques.disponibles} encore disponible
+            {statistiques.disponibles > 1 ? 's' : ''}
+          </p>
+        )}
+
         <section className="outils" aria-label="Recherche et filtres">
           <input
             className="recherche"
@@ -476,6 +486,7 @@ function PageAdmin() {
   const [chargement, setChargement] = useState(true)
   const [connexion, setConnexion] = useState(false)
   const [erreur, setErreur] = useState('')
+  const [rechercheAdmin, setRechercheAdmin] = useState('')
 
   async function chargerReservations() {
     setChargement(true)
@@ -555,6 +566,50 @@ function PageAdmin() {
     (cadeau) => cadeau.reserve
   )
 
+  const reservationsFiltrees = reservationsEffectives.filter((cadeau) => {
+    const texte = rechercheAdmin.trim().toLocaleLowerCase('fr-FR')
+
+    if (!texte) return true
+
+    return (
+      cadeau.nom?.toLocaleLowerCase('fr-FR').includes(texte) ||
+      cadeau.categorie?.toLocaleLowerCase('fr-FR').includes(texte) ||
+      cadeau.prenom_reservant?.toLocaleLowerCase('fr-FR').includes(texte)
+    )
+  })
+
+  function exporterReservations() {
+    const lignes = [
+      ['Cadeau', 'Catégorie', 'Réservé par'],
+      ...reservationsEffectives.map((cadeau) => [
+        cadeau.nom ?? '',
+        cadeau.categorie ?? '',
+        cadeau.prenom_reservant ?? '',
+      ]),
+    ]
+
+    const csv = lignes
+      .map((ligne) =>
+        ligne
+          .map((cellule) => `"${String(cellule).replaceAll('"', '""')}"`)
+          .join(';')
+      )
+      .join('\n')
+
+    const fichier = new Blob(['\ufeff' + csv], {
+      type: 'text/csv;charset=utf-8;',
+    })
+    const url = URL.createObjectURL(fichier)
+    const lien = document.createElement('a')
+
+    lien.href = url
+    lien.download = 'reservations-lyna.csv'
+    document.body.appendChild(lien)
+    lien.click()
+    lien.remove()
+    URL.revokeObjectURL(url)
+  }
+
   if (!session) {
     return (
       <main className="admin-page">
@@ -630,6 +685,51 @@ function PageAdmin() {
           </button>
         </div>
 
+        {!chargement && !erreur && (
+          <>
+            <section className="stats-admin" aria-label="Résumé des cadeaux">
+              <div>
+                <strong>{reservations.length}</strong>
+                <span>cadeaux au total</span>
+              </div>
+              <div>
+                <strong>{reservationsEffectives.length}</strong>
+                <span>réservés</span>
+              </div>
+              <div>
+                <strong>
+                  {Math.max(
+                    reservations.length - reservationsEffectives.length,
+                    0
+                  )}
+                </strong>
+                <span>disponibles</span>
+              </div>
+            </section>
+
+            <section className="outils-admin">
+              <input
+                type="search"
+                value={rechercheAdmin}
+                onChange={(event) =>
+                  setRechercheAdmin(event.target.value)
+                }
+                placeholder="Rechercher un cadeau ou un prénom…"
+                aria-label="Rechercher dans les réservations"
+              />
+
+              <button
+                type="button"
+                className="bouton secondaire"
+                onClick={exporterReservations}
+                disabled={reservationsEffectives.length === 0}
+              >
+                Télécharger pour Excel
+              </button>
+            </section>
+          </>
+        )}
+
         {chargement && (
           <p className="message">Chargement des réservations…</p>
         )}
@@ -644,9 +744,18 @@ function PageAdmin() {
             </p>
           )}
 
-        {!chargement && !erreur && reservationsEffectives.length > 0 && (
+        {!chargement &&
+          !erreur &&
+          reservationsEffectives.length > 0 &&
+          reservationsFiltrees.length === 0 && (
+            <p className="message">
+              Aucun résultat ne correspond à cette recherche.
+            </p>
+          )}
+
+        {!chargement && !erreur && reservationsFiltrees.length > 0 && (
           <div className="liste-admin">
-            {reservationsEffectives.map((cadeau) => (
+            {reservationsFiltrees.map((cadeau) => (
               <article className="reservation-admin" key={cadeau.id}>
                 <div>
                   <span className="categorie-admin">
