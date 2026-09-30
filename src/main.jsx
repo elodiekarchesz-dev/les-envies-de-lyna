@@ -70,7 +70,7 @@ function ListeCadeaux() {
 
     const { data, error } = await supabase
       .from('cadeaux')
-      .select(colonnesPubliques)
+      .select('*')
       .order('ordre', { ascending: true, nullsFirst: false })
       .order('id', { ascending: true })
 
